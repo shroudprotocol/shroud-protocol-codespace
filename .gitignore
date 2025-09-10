@@ -1,0 +1,40 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build artifacts
+dist/
+build/
+.next/
+out/
+
+# Caches
+.cache/
+cache/
+
+# Hardhat
+artifacts/
+typechain-types/
+coverage/
+coverage.json
+*.swp
+
+# ZK
+zk-build/
+circuits/circomlib/
+bin/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Database files
+prisma/dev.db
+prisma/dev.db-journal
+
+# OS files
+.DS_Store
+Thumbs.db
