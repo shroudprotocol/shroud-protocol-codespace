@@ -9,6 +9,7 @@ import TokenSelector from './TokenSelector';
 import { TOKENS, Token } from '@/lib/tokens';
 import { generateFullNote } from '@/lib/shroud';
 import { shroudConductorAbi, shroudConductorAddress } from '@/lib/contracts';
+import { getEncryptionKey, encryptNote, saveEncryptedNote } from '@/lib/backup';
 
 const denominations: { [key: string]: string[] } = {
   ETH: ['0.1', '1', '10', '100'],
@@ -20,7 +21,7 @@ export default function DepositForm() {
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
 
-  const { isConnected } = useAccount();
+  const { address: userAddress, isConnected } = useAccount();
   const chainId = useChainId();
   const { data: hash, writeContract, isPending, error, reset } = useWriteContract();
   
@@ -30,6 +31,7 @@ export default function DepositForm() {
   const [memo, setMemo] = useState('');
   const [depositData, setDepositData] = useState<{ note: string; [key: string]: any } | null>(null);
   const [isCopied, setIsCopied] = useState(false);
+  const [backupState, setBackupState] = useState<'idle' | 'in_progress' | 'success' | 'error'>('idle');
 
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
 
@@ -37,20 +39,34 @@ export default function DepositForm() {
   const isCustomDeposit = !!customAmount || !TOKENS.some(t => t.symbol === selectedToken.symbol);
   const amountToDeposit = customAmount || selectedAmount;
 
+  const handleAmountClick = (amount: string) => {
+    setSelectedAmount(amount);
+    setCustomAmount('');
+  };
+
+  const handleCustomAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setCustomAmount(e.target.value);
+    setSelectedAmount(null);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!amountToDeposit || !isConnected || !chainId) return;
     try {
       const { fullNoteObject, commitmentHex } = await generateFullNote(selectedToken.symbol, amountToDeposit, chainId, memo);
       setDepositData(fullNoteObject);
+      
       const depositAmount = parseEther(amountToDeposit);
       writeContract({ address: shroudConductorAddress, abi: shroudConductorAbi, functionName: isCustomDeposit ? 'depositCustom' : 'deposit', args: [selectedToken.address, depositAmount, commitmentHex], value: selectedToken.symbol === 'ETH' ? depositAmount : BigInt(0), });
-    } catch (err) { console.error("Error during deposit submission:", err); }
+    } catch (err) {
+      console.error("Error during deposit submission:", err);
+    }
   };
 
   const handleAcknowledge = () => {
     setDepositData(null);
     setIsCopied(false);
+    setBackupState('idle');
     reset();
   };
 
@@ -59,6 +75,20 @@ export default function DepositForm() {
       navigator.clipboard.writeText(depositData.note);
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
+    }
+  };
+  
+  const handleBackup = async () => {
+    if (!depositData || !userAddress) return;
+    setBackupState('in_progress');
+    try {
+      const key = await getEncryptionKey();
+      const ciphertext = encryptNote(JSON.stringify(depositData), key);
+      await saveEncryptedNote(userAddress, ciphertext);
+      setBackupState('success');
+    } catch (err) {
+      console.error("Backup failed:", err);
+      setBackupState('error');
     }
   };
 
@@ -70,18 +100,27 @@ export default function DepositForm() {
     }
   }, [isConfirmed, depositData]);
 
-  if (!isMounted) return null;
+  if (!isMounted) {
+    return null;
+  }
 
   if (isConfirmed && depositData) {
     return (
       <div className="space-y-4 text-center">
         <h2 className="text-xl font-semibold text-success">Deposit Confirmed!</h2>
-        <p className="text-sm text-text-secondary">Please save your secret note in a secure location.</p>
+        <p className="text-sm text-text-secondary">Save your secret note below. For convenience, you can also create a secure, encrypted backup tied to your wallet.</p>
         <div className="p-4 bg-background rounded-lg border border-secondary/50">
           <p className="text-xs text-left text-error font-bold mb-2">CRITICAL: Without this note AND your secret memo, your funds are lost forever.</p>
           <textarea readOnly value={depositData.note} rows={4} className="w-full bg-black/30 text-xs p-2 rounded-md font-mono" />
         </div>
-        <Button onClick={handleCopy} className="w-full">{isCopied ? 'Copied!' : 'Copy Secret Note'}</Button>
+        <div className="flex gap-4">
+          <Button onClick={handleCopy} variant="secondary" className="w-full">{isCopied ? 'Copied!' : 'Copy Secret Note'}</Button>
+          <Button onClick={handleBackup} className="w-full" disabled={backupState !== 'idle'}>
+            {backupState === 'in_progress' ? 'Check Wallet...' : backupState === 'success' ? 'Backup Successful!' : backupState === 'error' ? 'Backup Failed' : 'Securely Back Up Note'}
+          </Button>
+        </div>
+        {backupState === 'success' && <p className="text-xs text-success">Your encrypted note has been saved. You can recover it from the History page with this wallet.</p>}
+        {backupState === 'error' && <p className="text-xs text-error">Backup failed. Please copy the note manually.</p>}
         <button onClick={handleAcknowledge} className="text-sm text-text-secondary hover:text-text-primary pt-2 transition-colors">Done</button>
       </div>
     );
@@ -90,9 +129,22 @@ export default function DepositForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <TokenSelector selectedToken={selectedToken} setSelectedToken={setSelectedToken} />
-      <div><label className="block text-sm font-medium text-text-secondary mb-2">Select Amount</label><div className="grid grid-cols-4 gap-2">{currentDenominations.map((amount) => ( <button type="button" key={amount} onClick={() => { setSelectedAmount(amount); setCustomAmount(''); }} className={`py-2 px-1 text-sm rounded-md transition-colors border ${ selectedAmount === amount ? 'bg-primary/20 border-primary text-primary font-semibold' : 'bg-surface border-secondary/50 hover:border-primary/50 text-text-secondary' }`} > {amount} <span className="text-xs">{selectedToken.symbol}</span> </button> ))}</div></div>
-      <div><label className="block text-sm font-medium text-text-secondary mb-2">Or Enter Custom Amount</label><Input type="number" placeholder="e.g., 5.4321" value={customAmount} onChange={(e) => { setCustomAmount(e.target.value); setSelectedAmount(null); }} />{(customAmount || !TOKENS.some(t => t.symbol === selectedToken.symbol)) && ( <p className="text-xs text-yellow-500 mt-1"> Warning: Using a custom token or amount may significantly reduce your privacy. </p> )}</div>
-      <div><label className="block text-sm font-medium text-text-secondary mb-2">Secret Memo (Optional Password)</label><Input type="password" placeholder="A secret word or phrase only you know" value={memo} onChange={(e) => setMemo(e.target.value)} /><p className="text-xs text-text-secondary mt-1"> <span className="font-bold text-error">CRITICAL:</span> If you set a memo, you MUST remember it to withdraw. </p></div>
+      <div>
+        <label className="block text-sm font-medium text-text-secondary mb-2">Select Amount</label>
+        <div className="grid grid-cols-4 gap-2">
+          {currentDenominations.map((amount) => ( <button type-="button" key={amount} onClick={() => handleAmountClick(amount)} className={`py-2 px-1 text-sm rounded-md transition-colors border ${ selectedAmount === amount ? 'bg-primary/20 border-primary text-primary font-semibold' : 'bg-surface border-secondary/50 hover:border-primary/50 text-text-secondary' }`} > {amount} <span className="text-xs">{selectedToken.symbol}</span> </button> ))}
+        </div>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-text-secondary mb-2">Or Enter Custom Amount</label>
+        <Input type="number" placeholder="e.g., 5.4321" value={customAmount} onChange={handleCustomAmountChange} />
+        {(customAmount || !TOKENS.some(t => t.symbol === selectedToken.symbol)) && ( <p className="text-xs text-yellow-500 mt-1"> Warning: Using a custom token or amount may significantly reduce your privacy. </p> )}
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-text-secondary mb-2">Secret Memo (Optional Password)</label>
+        <Input type="password" placeholder="A secret word or phrase only you know" value={memo} onChange={(e) => setMemo(e.target.value)} />
+        <p className="text-xs text-text-secondary mt-1"> <span className="font-bold text-error">CRITICAL:</span> If you set a memo, you MUST remember it to withdraw. </p>
+      </div>
       <Button type="submit" className="w-full" disabled={!isMounted || !isConnected || isPending || isConfirming}>{isPending ? 'Check Wallet...' : isConfirming ? 'Depositing...' : 'Generate Note & Deposit'}</Button>
       {hash && <div className="text-xs text-center text-text-secondary mt-2">Transaction Hash: {hash.slice(0, 10)}...</div>}
       {error && <div className="text-xs text-center text-error mt-2">Error: {error.message}</div>}

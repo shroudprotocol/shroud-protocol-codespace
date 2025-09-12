@@ -12,9 +12,12 @@
   "description": "",
   "dependencies": {
     "@prisma/client": "^6.15.0",
+    "circomlibjs": "^0.1.7",
     "cors": "^2.8.5",
     "express": "^5.1.0",
-    "prisma": "^6.15.0"
+    "fixed-merkle-tree": "^0.7.3",
+    "prisma": "^6.15.0",
+    "viem": "^2.37.5"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

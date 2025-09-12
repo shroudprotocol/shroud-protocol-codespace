@@ -4,7 +4,7 @@ set -e # Exit on error
 
 # 1. Compile the circuit
 echo "Compiling withdraw.circom..."
-./bin/circom.exe circuits/withdraw.circom --r1cs --wasm --output zk-build
+./bin/circom circuits/withdraw.circom --r1cs --wasm --output zk-build
 echo "✅ Circuit compiled"
 
 # 2. Phase 1 Powers of Tau
