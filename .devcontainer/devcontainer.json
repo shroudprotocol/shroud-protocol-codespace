@@ -1,0 +1,37 @@
+{
+  "name": "Shroud Protocol Development",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:18",
+
+  "features": {
+    "ghcr.io/devcontainers/features/rust:1": {}
+  },
+
+  "forwardPorts": [3000, 3001, 8545],
+  "portsAttributes": {
+    "3000": { "label": "Frontend App" },
+    "3001": { "label": "Note Service" },
+    "8545": { "label": "Hardhat Node" }
+  },
+
+  "containerEnv": {
+    "NODE_OPTIONS": "--max-old-space-size=4096"
+  },
+
+  "postCreateCommand": "bash ./.devcontainer/post-create.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "NomicFoundation.hardhat-solidity",
+        "bradlc.vscode-tailwindcss",
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  },
+
+  "remoteUser": "node"
+}
