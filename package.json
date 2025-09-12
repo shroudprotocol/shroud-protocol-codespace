@@ -2,8 +2,7 @@
   "name": "shroud-protocol-root",
   "version": "1.0.0",
   "private": true,
-  "description": "",
-  "main": "index.js",
+  "description": "The root of the Shroud Protocol monorepo.",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -12,7 +11,7 @@
   "license": "ISC",
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^3.0.0",
-    "@types/minimatch": "^6.0.0",
+    "@types/minimatch": "^5.1.2",
     "hardhat": "^2.22.6"
   },
   "dependencies": {
@@ -22,6 +21,5 @@
   },
   "workspaces": [
     "frontend",
-    "note-service"
   ]
 }
