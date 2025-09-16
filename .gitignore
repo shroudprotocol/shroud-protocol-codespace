@@ -1,15 +1,13 @@
-# Node
-# These rules apply to all subdirectories
+# Dependencies
 node_modules/
-npm-debug.log*
-yarn-error.log*
-pnpm-debug.log*
+frontend/node_modules/
 
-# Next.js frontend
+# Next.js
 frontend/.next/
 frontend/out/
+frontend/.env.local
 
-# Hardhat backend
+# Hardhat
 artifacts/
 cache/
 typechain-types/
@@ -17,21 +15,10 @@ coverage/
 coverage.json
 *.swp
 
-# ZK
+# ZK Build Artifacts
 zk-build/
-circuits/circomlib/
 bin/
 
-# Note Service
-note-service/prisma/dev.db
-note-service/prisma/dev.db-journal
-
-# Environment variables
-# These rules apply to all subdirectories
-.env
-.env.local
-.env.*.local
-
-# OS files
+# OS
 .DS_Store
 Thumbs.db
