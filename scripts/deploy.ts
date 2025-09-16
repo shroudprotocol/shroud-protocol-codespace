@@ -1,68 +1,51 @@
-import { ethers } from "hardhat";
+import { ethers, run } from "hardhat";
 
 async function main() {
-  console.log("Starting deployment of Shroud Protocol...");
+  console.log("--- STARTING DEFINITIVE DEPLOYMENT ---");
+  await run('compile', { force: true });
+  console.log("Compilation complete.");
 
-  // Get the deployer account
   const [deployer] = await ethers.getSigners();
   console.log(`Deploying contracts with the account: ${deployer.address}`);
 
-  // 1. Deploy Groth16Verifier
-  const verifierFactory = await ethers.getContractFactory("Groth16Verifier");
-  const verifier = await verifierFactory.deploy();
+  const verifier = await ethers.deployContract("Groth16Verifier");
   await verifier.waitForDeployment();
-  const verifierAddress = await verifier.getAddress();
-  console.log(`✅ Groth16Verifier deployed to: ${verifierAddress}`);
+  console.log(`✅ Groth16Verifier deployed to: ${verifier.target}`);
 
-  // 2. Deploy ShroudToken
-  const shroudTokenFactory = await ethers.getContractFactory("ShroudToken");
-  const shroudToken = await shroudTokenFactory.deploy(deployer.address);
+  const shroudToken = await ethers.deployContract("ShroudToken", [deployer.address]);
   await shroudToken.waitForDeployment();
-  const shroudTokenAddress = await shroudToken.getAddress();
-  console.log(`✅ ShroudToken deployed to: ${shroudTokenAddress}`);
+  console.log(`✅ ShroudToken deployed to: ${shroudToken.target}`);
   
-  // 3. Deploy a MockERC20 to use as a reward token for Staking
-  const mockERC20Factory = await ethers.getContractFactory("MockERC20");
-  const mockERC20 = await mockERC20Factory.deploy("Mock USDC", "mUSDC", deployer.address);
+  const mockERC20 = await ethers.deployContract("MockERC20", ["Mock USDC", "mUSDC", deployer.address]);
   await mockERC20.waitForDeployment();
-  const mockERC20Address = await mockERC20.getAddress();
-  console.log(`✅ MockERC20 (for rewards) deployed to: ${mockERC20Address}`);
+  console.log(`✅ MockERC20 deployed to: ${mockERC20.target}`);
 
-  // 4. Prepare arguments for ShroudConductor
-  const allowedTokens = [shroudTokenAddress]; // An array containing our token
+  const allowedTokens = [
+    "0x0000000000000000000000000000000000000000", // ETH
+    shroudToken.target 
+  ];
   const allowedDenominations = [
-    [
-      ethers.parseEther("0.1"),
-      ethers.parseEther("1"),
-      ethers.parseEther("10"),
-      ethers.parseEther("100"),
-    ],
-  ]; // A 2D array for the denominations of our token
+    [ ethers.parseEther("0.1"), ethers.parseEther("1"), ethers.parseEther("10"), ethers.parseEther("100") ],
+    [ ethers.parseEther("100"), ethers.parseEther("1000"), ethers.parseEther("10000") ]
+  ];
 
-  // 5. Deploy ShroudConductor with the CORRECT arguments
-  const shroudConductorFactory = await ethers.getContractFactory("ShroudConductor");
-  const shroudConductor = await shroudConductorFactory.deploy(
-    verifierAddress,
+  const shroudConductor = await ethers.deployContract("ShroudConductor", [
+    verifier.target,
     allowedTokens,
     allowedDenominations
-  );
+  ]);
   await shroudConductor.waitForDeployment();
-  console.log(`✅ ShroudConductor deployed to: ${await shroudConductor.getAddress()}`);
+  console.log(`✅ ShroudConductor deployed to: ${shroudConductor.target}`);
 
-  // 6. Deploy Presale contract with the CORRECT arguments
-  const presaleFactory = await ethers.getContractFactory("Presale");
-  const saleDurationDays = 30;
-  const presale = await presaleFactory.deploy(shroudTokenAddress, saleDurationDays, deployer.address);
+  const presale = await ethers.deployContract("Presale", [shroudToken.target, 30, deployer.address]);
   await presale.waitForDeployment();
-  console.log(`✅ Presale deployed to: ${await presale.getAddress()}`);
+  console.log(`✅ Presale deployed to: ${presale.target}`);
 
-  // 7. Deploy Staking contract with the CORRECT arguments
-  const stakingFactory = await ethers.getContractFactory("Staking");
-  const staking = await stakingFactory.deploy(shroudTokenAddress, mockERC20Address, deployer.address);
+  const staking = await ethers.deployContract("Staking", [shroudToken.target, mockERC20.target, deployer.address]);
   await staking.waitForDeployment();
-  console.log(`✅ Staking deployed to: ${await staking.getAddress()}`);
+  console.log(`✅ Staking deployed to: ${staking.target}`);
 
-  console.log("\n🚀 All contracts deployed successfully! 🚀");
+  console.log("\n--- DEFINITIVE DEPLOYMENT COMPLETE ---");
 }
 
 main().catch((error) => {
