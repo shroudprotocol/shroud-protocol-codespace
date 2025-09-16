@@ -2,12 +2,13 @@ pragma circom 2.0.0;
 
 include "circomlib/poseidon.circom";
 include "circomlib/merkle.circom";
+include "circomlib/bitify.circom";
 
+// Commitment is a 2-input hash of secret and nullifier.
 template CommitmentHasher() {
     signal input secret;
     signal input nullifier;
     signal output commitment;
-
     component hasher = Poseidon(2);
     hasher.inputs[0] <== secret;
     hasher.inputs[1] <== nullifier;
@@ -15,14 +16,17 @@ template CommitmentHasher() {
 }
 
 template Withdraw(levels) {
+    // Public inputs
     signal input root;
     signal input nullifierHash;
     signal input recipient;
     signal input relayer;
     signal input fee;
 
+    // Private inputs
     signal input nullifier;
     signal input secret;
+    signal input memoHash;
     signal input pathElements[levels];
     signal input pathIndices[levels];
 
@@ -31,8 +35,10 @@ template Withdraw(levels) {
     commitmentHasher.secret <== secret;
     signal commitment <== commitmentHasher.commitment;
 
-    component nullifierHasher = Poseidon(1);
+    // Nullifier hash is Poseidon(nullifier, memoHash).
+    component nullifierHasher = Poseidon(2);
     nullifierHasher.inputs[0] <== nullifier;
+    nullifierHasher.inputs[1] <== memoHash;
     nullifierHasher.out === nullifierHash;
 
     component merkleProof = MerkleProof(levels);
@@ -44,6 +50,4 @@ template Withdraw(levels) {
     merkleProof.root === root;
 }
 
-// DEFINITIVE CORRECTION:
-// This line declares the public inputs for the entire circuit.
 component main { public [ root, nullifierHash, recipient, relayer, fee ] } = Withdraw(20);
