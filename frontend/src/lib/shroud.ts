@@ -1,44 +1,20 @@
-// @ts-ignore - circomlibjs is not typed
+// @ts-ignore
 import { buildPoseidon } from "circomlibjs";
-import { toHex, hexToBigInt, padHex } from 'viem';
+import { toHex, hexToBigInt, pad, createPublicClient, http, parseAbiItem } from 'viem';
+// @ts-ignore
+import * as snarkjs from 'snarkjs';
+import { ShroudNote } from "@/types";
+import { MerkleTree } from 'fixed-merkle-tree';
+import { hardhat } from 'viem/chains';
+import { wagmiConfig } from "./wagmiConfig";
+import { shroudConductorAddress } from "./contracts";
 
-let poseidon: any;
-
-async function getPoseidon() {
-  if (!poseidon) {
-    poseidon = await buildPoseidon();
-  }
-  return poseidon;
-}
-
-const randomHex = () => {
-  const randomBytes = crypto.getRandomValues(new Uint8Array(31));
-  return toHex(randomBytes);
-};
-
-export async function generateFullNote(tokenSymbol: string, amount: string, chainId: number, memo: string = '') {
-  const poseidon = await getPoseidon();
-  
-  const secret = hexToBigInt(randomHex());
-  const nullifier = hexToBigInt(randomHex());
-
-  const memoHash = memo ? poseidon([hexToBigInt(toHex(new TextEncoder().encode(memo)))]) : 0;
-  
-  const commitment = poseidon([secret, nullifier, memoHash]);
-  const commitmentHex = padHex(toHex(commitment), { size: 32 });
-
-  // THE NEW, CLEAN NOTE FORMAT: Just secret and nullifier.
-  const noteString = `${toHex(secret)}-${toHex(nullifier)}`;
-
-  // The full object to be saved to local storage/backups.
-  // The memo is stored here, but NOT in the noteString.
-  const fullNoteObject = {
-    note: noteString,
-    tokenSymbol,
-    amount,
-    chainId,
-    memo,
-  };
-
-  return { fullNoteObject, commitmentHex };
-}
+let poseidonPromise: Promise<any>;
+export async function getPoseidon() { if (!poseidonPromise) { poseidonPromise = buildPoseidon(); } return await poseidonPromise; }
+const randomHex = () => toHex(crypto.getRandomValues(new Uint8Array(31)));
+async function calculateCommitment(secret: bigint, nullifier: bigint): Promise<bigint> { const poseidon = await getPoseidon(); return poseidon([secret, nullifier]); }
+export async function generateFullNote(tokenSymbol: string, amount: string, chainId: number, memo: string = '') { const secret = hexToBigInt(randomHex()); const nullifier = hexToBigInt(randomHex()); const commitment = await calculateCommitment(secret, nullifier); const commitmentHex = pad(toHex(commitment), { size: 32 }); const noteString = `${pad(toHex(secret), { size: 31 })}-${pad(toHex(nullifier), { size: 31 })}`; const fullNoteObject: ShroudNote = { note: noteString, tokenSymbol, amount, chainId, memo }; return { fullNoteObject, commitmentHex }; }
+async function getMerkleTree() { const poseidon = await getPoseidon(); const publicClient = createPublicClient({ chain: hardhat, transport: http(wagmiConfig.chains[0].rpcUrls.default.http[0]), }); const logs = await publicClient.getLogs({ address: shroudConductorAddress, event: parseAbiItem('event Deposit(address indexed token, uint256 amount, bytes32 indexed commitment, uint256 leafIndex, bool isCustom)'), fromBlock: 0n, toBlock: 'latest', }); logs.sort((a, b) => Number(a.args.leafIndex) - Number(b.args.leafIndex)); const leaves = logs.map(log => log.args.commitment!); const tree = new MerkleTree(20, leaves, { hashFunction: (l, r) => toHex(poseidon([hexToBigInt(l), hexToBigInt(r)])), zeroElement: '0x0000000000000000000000000000000000000000000000000000000000000000', }); return tree; }
+export function parseNote(noteString: string) { const parts = noteString.trim().split('-'); if (parts.length !== 2) { throw new Error("Invalid note format."); } const [secretHex, nullifierHex] = parts; return { secret: hexToBigInt(secretHex as `0x${string}`), nullifier: hexToBigInt(nullifierHex as `0x${string}`) }; }
+export async function calculateNullifierHash(noteString: string, memo: string) { const poseidon = await getPoseidon(); const { nullifier } = parseNote(noteString); const memoHash = memo ? poseidon([hexToBigInt(toHex(new TextEncoder().encode(memo)))]) : BigInt(0); return toHex(poseidon([nullifier, memoHash])); }
+export async function generateProof(noteData: ShroudNote, recipientAddress: string) { const poseidon = await getPoseidon(); const { secret, nullifier } = parseNote(noteData.note); const memoHash = noteData.memo ? poseidon([hexToBigInt(toHex(new TextEncoder().encode(noteData.memo)))]) : BigInt(0); const nullifierHash = poseidon([nullifier, memoHash]); const commitment = await calculateCommitment(secret, nullifier); const commitmentHex = pad(toHex(commitment), { size: 32 }); const tree = await getMerkleTree(); const leafIndex = tree.indexOf(commitmentHex); if (leafIndex === -1) { throw new Error("Commitment not found in tree."); } const merkleProof = tree.proof(commitmentHex); const circuitInputs = { root: tree.root, nullifierHash, recipient: hexToBigInt(recipientAddress as `0x${string}`), relayer: BigInt(0), fee: BigInt(0), nullifier, secret, memoHash, pathElements: merkleProof.pathElements, pathIndices: merkleProof.pathIndices, }; const wasmResponse = await fetch('/withdraw.wasm'); const zkeyResponse = await fetch('/withdraw_final.zkey'); const [wasmBuffer, zkeyBuffer] = await Promise.all([wasmResponse.arrayBuffer(), zkeyResponse.arrayBuffer()]); const { proof, publicSignals } = await snarkjs.groth16.fullProve(circuitInputs, wasmBuffer, zkeyBuffer); const formattedProof = { a: [proof.pi_a[0], proof.pi_a[1]], b: [[proof.pi_b[0][1], proof.pi_b[0][0]], [proof.pi_b[1][1], proof.pi_b[1][0]]], c: [proof.pi_c[0], proof.pi_c[1]], }; return { formattedProof, publicSignals }; }
