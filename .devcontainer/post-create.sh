@@ -1,16 +1,12 @@
 #!/bin/bash
 set -e
-
 echo "--- Running Post-Create Setup ---"
 
-# Install root dependencies
-echo "Installing root dependencies..."
-npm install
+# Ensure script is executable
+chmod +x ./build-zk.sh
 
-# Install frontend dependencies
-echo "Installing frontend dependencies..."
-cd frontend
+# Install root and frontend dependencies
 npm install
-cd ..
+cd frontend && npm install
 
 echo "--- Setup Complete! ---"
